@@ -1,5 +1,5 @@
-const CACHE = 'fieldmark-static-v3';
-const CORE = ['./', './index.html', './styles.css', './app.js', './storage.js', './geometry.js', './manifest.webmanifest', './icons/icon.svg'];
+const CACHE = 'fieldmark-static-v4';
+const CORE = ['./', './index.html', './styles.css?v=4', './app.js?v=4', './storage.js', './geometry.js', './manifest.webmanifest', './icons/icon.svg'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting()));
