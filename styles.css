@@ -26,6 +26,17 @@
   #editorScreen .editor-content{overflow:visible}
   #editorScreen .canvas-stage{height:250px;min-height:250px;flex:none}
 }
+
+@media screen and (max-width:640px) and (min-height:591px){
+  html,body{max-width:100%;overflow-x:hidden}
+  #editorScreen,#editorScreen .editor-topbar,#editorScreen .editor-content,#editorScreen .editor-bottom{box-sizing:border-box;max-width:100%;min-width:0;width:100%}
+  #editorScreen .editor-info{min-width:0;overflow:hidden}
+  #editorScreen .editor-info span:first-child{flex:0 0 auto;white-space:nowrap}
+  #editorScreen .editor-info span:last-child{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+  #editorScreen .canvas-stage{max-height:48dvh}
+  #editorScreen .editor-actions{width:100%;justify-content:space-between;min-width:0}
+  #editorScreen .editor-actions .button{min-width:0;white-space:normal;line-height:1.2}
+}
 .header-actions{display:flex;align-items:center;gap:3px}.project-card{position:relative}.project-open{border:0;background:none;padding:0;display:flex;flex:1;flex-direction:column;text-align:left;color:inherit}.project-open .project-cover,.project-open .project-meta{width:100%}.project-delete{position:absolute;top:8px;right:8px;border:0;background:#ffffffd9;color:#a33a43;width:27px;height:27px;border-radius:50%;font-size:20px;line-height:1}
 .dual-measure{display:grid;grid-template-columns:1fr 1fr 85px;gap:8px}.dual-measure label{min-width:0}.dual-measure input,.dual-measure select{min-width:0}
 @media(max-width:640px){.header-actions{gap:0}.header-actions .button{padding:8px 6px;font-size:10px}.editor-actions{gap:0}.editor-actions .button{padding:8px 6px}}

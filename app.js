@@ -226,7 +226,7 @@ function setTool(tool) {
   app.draft = null;
   for (const button of document.querySelectorAll('[data-tool]')) button.classList.toggle('is-active', button.dataset.tool === tool);
   canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
-  $('modeHint').textContent = { select:'선을 누르면 내용을 수정할 수 있어요', dimension:'실측한 구간을 드래그해 입력', reference:'길이를 아는 구간을 드래그해 기준 설정', auto:'같은 평면의 구간을 드래그하면 길이 추정', lshape:'대각선으로 드래그해 가로·세로 표시', note:'메모를 붙일 지점을 누르세요' }[tool];
+  $('modeHint').textContent = { select:'메모 1회: 펼침·숨김 / 2회: 수정', dimension:'실측한 구간을 드래그해 입력', reference:'길이를 아는 구간을 드래그해 기준 설정', auto:'같은 평면의 구간을 드래그하면 길이 추정', lshape:'대각선으로 드래그해 가로·세로 표시', note:'메모를 붙일 지점을 누르세요' }[tool];
   draw();
 }
 
@@ -276,16 +276,24 @@ function paintAnnotation(context, annotation, rect, scale=1, photo=null, imageWi
     context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText(label, midX, midY);
   } else {
     const text = (annotation.text || '').split('\n')[0].slice(0,34) || '메모';
-    context.font = `700 ${12*scale}px -apple-system, sans-serif`;
-    const width = Math.min(context.measureText(text).width + 26*scale, rect.width*.8);
-    const x = Math.min(a.x+7*scale, rect.x+rect.width-width-5*scale);
-    const y = Math.max(rect.y+5*scale, a.y-30*scale);
-    context.fillStyle = 'rgba(255,255,255,.96)';
-    context.beginPath(); context.roundRect(x, y, width, 30*scale, 8*scale); context.fill();
-    context.strokeStyle = color; context.lineWidth = 1.5*scale; context.stroke();
-    context.fillStyle = color;
-    context.textAlign = 'left'; context.textBaseline = 'middle'; context.fillText(text, x+10*scale, y+15*scale, width-18*scale);
-    context.beginPath(); context.arc(a.x,a.y,5*scale,0,2*Math.PI); context.fill();
+    // Keep photos unobstructed by default: tap the small numbered marker to reveal text.
+    context.fillStyle='#fff';
+    context.strokeStyle=color;context.lineWidth=2*scale;
+    context.beginPath();context.arc(a.x,a.y,13*scale,0,2*Math.PI);context.fill();context.stroke();
+    context.fillStyle=color;context.textAlign='center';context.textBaseline='middle';
+    context.font=`700 ${13*scale}px -apple-system, sans-serif`;
+    context.fillText('✎',a.x,a.y+1*scale);
+    if (annotation.expanded) {
+      context.font = `700 ${12*scale}px -apple-system, sans-serif`;
+      const width = Math.min(context.measureText(text).width + 26*scale, rect.width*.8);
+      const x = Math.max(rect.x+5*scale,Math.min(a.x+15*scale, rect.x+rect.width-width-5*scale));
+      const y = Math.max(rect.y+5*scale, a.y-35*scale);
+      context.fillStyle = 'rgba(255,255,255,.96)';
+      context.beginPath(); context.roundRect(x, y, width, 30*scale, 8*scale); context.fill();
+      context.strokeStyle = color; context.lineWidth = 1.5*scale; context.stroke();
+      context.fillStyle = color;
+      context.textAlign = 'left'; context.textBaseline = 'middle'; context.fillText(text, x+10*scale, y+15*scale, width-18*scale);
+    }
   }
 }
 
@@ -323,7 +331,19 @@ function hitAnnotation(point) {
   if (!rect) return null;
   for (const annotation of [...currentPhoto().annotations].reverse()) {
     const a = pointFromNormalized(annotation.a, rect);
-    if (annotation.type === 'note' && Math.hypot(a.x-point.x,a.y-point.y) < 35) return annotation;
+    if (annotation.type === 'note') {
+      if (Math.hypot(a.x-point.x,a.y-point.y) < 35) return annotation;
+      if (annotation.expanded) {
+        const scale=Math.max(1,rect.width/1100);
+        ctx.save();ctx.font=`700 ${12*scale}px -apple-system, sans-serif`;
+        const text=(annotation.text||'').split('\n')[0].slice(0,34)||'메모';
+        const width=Math.min(ctx.measureText(text).width+26*scale,rect.width*.8);
+        ctx.restore();
+        const x=Math.max(rect.x+5*scale,Math.min(a.x+15*scale,rect.x+rect.width-width-5*scale));
+        const y=Math.max(rect.y+5*scale,a.y-35*scale);
+        if(point.x>=x&&point.x<=x+width&&point.y>=y&&point.y<=y+30*scale) return annotation;
+      }
+    }
     if (annotation.type === 'dimension') {
       const b = pointFromNormalized(annotation.b, rect);
       if (distanceToSegment(point,a,b) < 22) return annotation;
@@ -380,7 +400,12 @@ function onPointerDown(event) {
   const norm = pointToNormalized(point.x,point.y,rect);
   if (app.tool === 'select') {
     const annotation = hitAnnotation(point);
-    if (annotation) openAnnotation({ ...annotation }, true);
+    if (annotation?.type === 'note') {
+      const repeated=app.lastNoteTap?.id===annotation.id && Date.now()-app.lastNoteTap.at<480;
+      app.lastNoteTap={id:annotation.id,at:Date.now()};
+      if (repeated) { openAnnotation({...annotation},true);app.lastNoteTap=null; }
+      else {rememberUndo();annotation.expanded=!annotation.expanded;scheduleSave();draw();}
+    } else if (annotation) openAnnotation({ ...annotation }, true);
     return;
   }
   event.preventDefault();
@@ -388,7 +413,7 @@ function onPointerDown(event) {
   app.pointer = { id:event.pointerId, start:point };
   if (['dimension','reference','auto'].includes(app.tool)) app.draft = { id:uuid(), type:'dimension', mode:app.tool==='reference'?'reference':app.tool==='auto'?'estimated':'manual', a:norm, b:norm, value:'', unit:photoReference(currentPhoto())?.unit||'cm', color:app.tool==='auto'?'#b66d13':'#0a8589' };
   if (app.tool === 'lshape') app.draft = { id:uuid(), type:'lshape', a:norm, b:norm, valueWidth:'', valueHeight:'', unit:'cm',color:'#0a8589' };
-  if (app.tool === 'note') app.draft = { id:uuid(), type:'note', a:norm, text:'', color:'#0a8589' };
+  if (app.tool === 'note') app.draft = { id:uuid(), type:'note', a:norm, text:'', expanded:false, color:'#0a8589' };
   draw();
 }
 
