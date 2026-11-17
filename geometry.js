@@ -26,3 +26,23 @@ export function distanceToSegment(point, start, end) {
 export function validDimension(value) {
   return typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)) && Number(value) > 0;
 }
+
+export const UNIT_TO_MM = { mm: 1, cm: 10, m: 1000 };
+
+export function segmentPixels(a, b, imageWidth, imageHeight) {
+  if (![a?.x, a?.y, b?.x, b?.y, imageWidth, imageHeight].every(Number.isFinite)) return NaN;
+  return Math.hypot((b.x-a.x)*imageWidth,(b.y-a.y)*imageHeight);
+}
+
+// Only valid for distances on the same fronto-parallel plane as the reference.
+export function estimateByReference(reference, target, imageWidth, imageHeight) {
+  if (!reference || !target || reference.value == null || !validDimension(String(reference.value)) || !UNIT_TO_MM[reference.unit]) return null;
+  const basePixels = segmentPixels(reference.a, reference.b, imageWidth, imageHeight);
+  const targetPixels = segmentPixels(target.a, target.b, imageWidth, imageHeight);
+  if (!(basePixels > 1) || !(targetPixels > 1)) return null;
+  const millimetres = Number(reference.value)*UNIT_TO_MM[reference.unit]*targetPixels/basePixels;
+  if (!Number.isFinite(millimetres) || millimetres <= 0) return null;
+  const unit = target.unit && UNIT_TO_MM[target.unit] ? target.unit : reference.unit;
+  const value = millimetres/UNIT_TO_MM[unit];
+  return { value: Number(value.toPrecision(4)), unit };
+}

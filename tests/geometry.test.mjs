@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { containRect, pointFromNormalized, pointToNormalized, distanceToSegment, validDimension } from '../geometry.js';
+import { containRect, pointFromNormalized, pointToNormalized, distanceToSegment, validDimension, estimateByReference } from '../geometry.js';
 
 test('portrait photo fits on wide canvas and normalized points round-trip', () => {
   const rect = containRect(900, 1200, 600, 450);
@@ -16,4 +16,16 @@ test('hit testing returns distance to segment, not infinite line', () => {
 test('dimension must be a positive finite number', () => {
   assert.equal(validDimension('10.5'), true);
   for (const bad of ['', '0', '-2', 'abc', 'Infinity']) assert.equal(validDimension(bad), false);
+});
+test('known reference calculates same-plane dimensions and converts units', () => {
+  const reference={a:{x:.1,y:.2},b:{x:.5,y:.2},value:100,unit:'cm'};
+  const target={a:{x:.1,y:.4},b:{x:.3,y:.4},unit:'mm'};
+  assert.deepEqual(estimateByReference(reference,target,1000,500),{value:500,unit:'mm'});
+});
+test('photo aspect ratio affects scale and uncalibrated values remain invalid', () => {
+  const reference={a:{x:0,y:0},b:{x:.5,y:0},value:1,unit:'m'};
+  const target={a:{x:0,y:0},b:{x:0,y:.5},unit:'m'};
+  assert.deepEqual(estimateByReference(reference,target,2000,1000),{value:.5,unit:'m'});
+  assert.equal(estimateByReference({...reference,value:0},target,2000,1000),null);
+  assert.equal(estimateByReference(reference,{...target,b:target.a},2000,1000),null);
 });

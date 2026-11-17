@@ -32,7 +32,7 @@
           <div id="projectList" class="project-list"></div>
           <div id="emptyProjects" class="empty-state"><div class="empty-symbol">▧</div><h3>첫 현장을 기록해 볼까요?</h3><p>실측값을 사진 위에 표시하고 보고서로 저장할 수 있어요.</p></div>
         </section>
-        <footer class="home-footer">필드마크 MVP · 자동 거리 측정이 아닌 <strong>직접 측정한 값의 기록</strong>에 사용합니다.</footer>
+        <footer class="home-footer">필드마크 MVP · 실측값 기록과 <strong>기준물 기반 거리 추정</strong>을 지원합니다. 추정값은 실측값과 다를 수 있어요.</footer>
       </main>
     </section>
 
@@ -54,6 +54,8 @@
           <div class="toolbar" role="group" aria-label="편집 도구">
             <button class="tool is-active" data-tool="select"><span>⌖</span><small>선택</small></button>
             <button class="tool" data-tool="dimension"><span>↔</span><small>치수선</small></button>
+            <button class="tool" data-tool="reference"><span>⌁</span><small>기준 길이</small></button>
+            <button class="tool" data-tool="auto"><span>≈</span><small>자동 계산</small></button>
             <button class="tool" data-tool="lshape"><span>↳</span><small>가로·세로</small></button>
             <button class="tool" data-tool="note"><span>✎</span><small>메모</small></button>
             <button id="undoAction" class="tool"><span>↶</span><small>되돌리기</small></button>
@@ -69,10 +71,10 @@
   </dialog>
 
   <dialog id="annotationDialog" class="modal">
-    <form id="annotationForm" method="dialog" class="modal-content"><div class="eyebrow">ANNOTATION</div><h2 id="annotationHeading">치수 입력</h2><label id="dimensionField">실측 길이<div class="inline-fields"><input id="dimensionValue" inputmode="decimal" type="number" min="0" step="any" placeholder="직접 측정한 길이"><select id="dimensionUnit" aria-label="단위"><option>mm</option><option selected>cm</option><option>m</option></select></div></label><div id="lShapeFields" class="dual-measure hidden"><label>가로 실측 길이<input id="widthValue" inputmode="decimal" type="number" min="0" step="any" placeholder="가로"></label><label>세로 실측 길이<input id="heightValue" inputmode="decimal" type="number" min="0" step="any" placeholder="세로"></label><label>단위<select id="lShapeUnit"><option>mm</option><option selected>cm</option><option>m</option></select></label></div><label id="noteField" class="hidden">현장 메모<textarea id="noteValue" rows="3" maxlength="200" placeholder="확인할 내용이나 특징을 적으세요"></textarea></label><label>표시 색상<select id="annotationColor"><option value="#0a8589">청록</option><option value="#e24f57">빨강</option><option value="#eea52f">노랑</option><option value="#315ac7">파랑</option><option value="#253044">검정</option></select></label><p class="hint">치수는 자동 측정값이 아닌 직접 입력한 값입니다.</p><div class="modal-actions"><button id="deleteAnnotation" type="button" class="button button-danger hidden">삭제</button><button type="button" class="button button-secondary" data-close="annotationDialog">취소</button><button type="submit" class="button button-primary">저장</button></div></form>
+    <form id="annotationForm" method="dialog" class="modal-content"><div class="eyebrow">ANNOTATION</div><h2 id="annotationHeading">치수 입력</h2><label id="dimensionField">실측 길이<div class="inline-fields"><input id="dimensionValue" inputmode="decimal" type="number" min="0" step="any" placeholder="직접 측정한 길이"><select id="dimensionUnit" aria-label="단위"><option>mm</option><option selected>cm</option><option>m</option></select></div></label><div id="estimateField" class="estimate-info hidden"><strong id="estimateValue"></strong><span>사진에서 계산한 추정값입니다. 정확한 실측이 필요한 용도로 사용하지 마세요.</span></div><div id="lShapeFields" class="dual-measure hidden"><label>가로 실측 길이<input id="widthValue" inputmode="decimal" type="number" min="0" step="any" placeholder="가로"></label><label>세로 실측 길이<input id="heightValue" inputmode="decimal" type="number" min="0" step="any" placeholder="세로"></label><label>단위<select id="lShapeUnit"><option>mm</option><option selected>cm</option><option>m</option></select></label></div><label id="noteField" class="hidden">현장 메모<textarea id="noteValue" rows="3" maxlength="200" placeholder="확인할 내용이나 특징을 적으세요"></textarea></label><label>표시 색상<select id="annotationColor"><option value="#0a8589">청록</option><option value="#e24f57">빨강</option><option value="#eea52f">노랑</option><option value="#315ac7">파랑</option><option value="#253044">검정</option></select></label><p id="annotationHint" class="hint">직접 측정한 값을 입력합니다.</p><div class="modal-actions"><button id="deleteAnnotation" type="button" class="button button-danger hidden">삭제</button><button type="button" class="button button-secondary" data-close="annotationDialog">취소</button><button type="submit" class="button button-primary">저장</button></div></form>
   </dialog>
 
-  <dialog id="reportDialog" class="modal"><div class="modal-content"><div class="eyebrow">REPORT</div><h2>현장 기록 내보내기</h2><p>사진에 표시된 치수·메모가 포함된 보고서를 인쇄하거나 PDF로 저장할 수 있어요.</p><p class="hint">기기에서 인쇄 메뉴를 열고 'PDF로 저장'을 선택하세요.</p><div class="modal-actions"><button type="button" class="button button-secondary" data-close="reportDialog">취소</button><button id="confirmReport" type="button" class="button button-primary">보고서 만들기</button></div></div></dialog>
+  <dialog id="reportDialog" class="modal"><div class="modal-content"><div class="eyebrow">REPORT</div><h2>현장 사진 보고서</h2><p>모든 사진과 치수·메모를 정리해 A4 보고서로 만들어요.</p><label>보고서 작성자 / 업체명<input id="reportAuthor" maxlength="80" placeholder="예: 홍길동 / OO인테리어"></label><label>현장 요약 / 조치사항<textarea id="reportSummary" rows="3" maxlength="700" placeholder="예: 창문 실측 및 교체 필요 사항 확인"></textarea></label><label class="report-option"><input id="reportCover" type="checkbox" checked> 표지와 요약 페이지 포함</label><p class="hint">인쇄 메뉴에서 'PDF로 저장'을 선택하세요. 자동 계산 치수는 추정값으로 명시됩니다.</p><div class="modal-actions"><button type="button" class="button button-secondary" data-close="reportDialog">취소</button><button id="confirmReport" type="button" class="button button-primary">보고서 만들기</button></div></div></dialog>
 
   <input id="photoInput" class="sr-only" type="file" accept="image/*" multiple>
   <input id="backupInput" class="sr-only" type="file" accept="application/json,.json">

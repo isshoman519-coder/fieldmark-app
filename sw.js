@@ -1,4 +1,4 @@
-const CACHE = 'fieldmark-static-v1';
+const CACHE = 'fieldmark-static-v2';
 const CORE = ['./', './index.html', './styles.css', './app.js', './storage.js', './geometry.js', './manifest.webmanifest', './icons/icon.svg'];
 
 self.addEventListener('install', event => {

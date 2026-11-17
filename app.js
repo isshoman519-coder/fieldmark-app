@@ -1,5 +1,5 @@
 import { loadProjects, saveProject, removeProject } from './storage.js';
-import { containRect, pointToNormalized, pointFromNormalized, distanceToSegment, validDimension } from './geometry.js';
+import { containRect, pointToNormalized, pointFromNormalized, distanceToSegment, validDimension, estimateByReference } from './geometry.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('annotationCanvas');
@@ -218,11 +218,15 @@ async function addPhotos(files) {
 }
 
 function setTool(tool) {
+  if (tool === 'auto' && !currentPhoto()?.annotations.some(a=>a.mode==='reference')) {
+    toast('먼저 ‘기준 길이’를 선택해 사진에서 길이를 아는 구간을 표시해주세요.');
+    return;
+  }
   app.tool = tool;
   app.draft = null;
   for (const button of document.querySelectorAll('[data-tool]')) button.classList.toggle('is-active', button.dataset.tool === tool);
   canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
-  $('modeHint').textContent = { select:'선을 누르면 내용을 수정할 수 있어요', dimension:'원하는 시작점부터 끝점까지 드래그', lshape:'대각선으로 드래그해 가로·세로 표시', note:'메모를 붙일 지점을 누르세요' }[tool];
+  $('modeHint').textContent = { select:'선을 누르면 내용을 수정할 수 있어요', dimension:'실측한 구간을 드래그해 입력', reference:'길이를 아는 구간을 드래그해 기준 설정', auto:'같은 평면의 구간을 드래그하면 길이 추정', lshape:'대각선으로 드래그해 가로·세로 표시', note:'메모를 붙일 지점을 누르세요' }[tool];
   draw();
 }
 
@@ -235,10 +239,17 @@ function drawArrow(ctx, x, y, angle, size) {
   ctx.stroke();
 }
 
-function paintAnnotation(context, annotation, rect, scale=1) {
+function photoReference(photo) { return photo.annotations.find(a=>a.type==='dimension' && a.mode==='reference'); }
+
+function resolvedDimension(annotation, photo, imageWidth, imageHeight) {
+  if (annotation.mode !== 'estimated') return { value:annotation.value,unit:annotation.unit };
+  return estimateByReference(photoReference(photo),annotation,imageWidth,imageHeight);
+}
+
+function paintAnnotation(context, annotation, rect, scale=1, photo=null, imageWidth=rect.width, imageHeight=rect.height) {
   if (annotation.type === 'lshape') {
-    paintAnnotation(context,{type:'dimension',a:annotation.a,b:{x:annotation.b.x,y:annotation.a.y},value:annotation.valueWidth,unit:annotation.unit,color:annotation.color},rect,scale);
-    paintAnnotation(context,{type:'dimension',a:{x:annotation.b.x,y:annotation.a.y},b:annotation.b,value:annotation.valueHeight,unit:annotation.unit,color:annotation.color},rect,scale);
+    paintAnnotation(context,{type:'dimension',a:annotation.a,b:{x:annotation.b.x,y:annotation.a.y},value:annotation.valueWidth,unit:annotation.unit,color:annotation.color},rect,scale,photo,imageWidth,imageHeight);
+    paintAnnotation(context,{type:'dimension',a:{x:annotation.b.x,y:annotation.a.y},b:annotation.b,value:annotation.valueHeight,unit:annotation.unit,color:annotation.color},rect,scale,photo,imageWidth,imageHeight);
     return;
   }
   const color = annotation.color || '#0a8589';
@@ -254,7 +265,8 @@ function paintAnnotation(context, annotation, rect, scale=1) {
     context.beginPath(); context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); context.stroke();
     drawArrow(context, a.x, a.y, angle, 10*scale);
     drawArrow(context, b.x, b.y, angle + Math.PI, 10*scale);
-    const label = annotation.value ? `${annotation.value} ${annotation.unit || 'cm'}` : '길이 입력';
+    const measured = photo ? resolvedDimension(annotation, photo, imageWidth, imageHeight) : { value:annotation.value,unit:annotation.unit };
+    const label = annotation.mode==='estimated' ? (measured ? `≈ ${measured.value} ${measured.unit}` : '기준 필요') : annotation.mode==='reference' ? `기준 ${annotation.value} ${annotation.unit}` : annotation.value ? `${annotation.value} ${annotation.unit || 'cm'}` : '길이 입력';
     context.font = `700 ${13*scale}px -apple-system, sans-serif`;
     const width = context.measureText(label).width + 18*scale;
     const midX = (a.x + b.x)/2, midY = (a.y + b.y)/2 - 15*scale;
@@ -283,8 +295,8 @@ function renderPhoto(context, image, photo, width, height, { preview=false }={})
   const rect = containRect(image.naturalWidth, image.naturalHeight, width, height);
   context.drawImage(image, rect.x, rect.y, rect.width, rect.height);
   const scale = Math.max(1, rect.width / 1100);
-  for (const annotation of photo.annotations) paintAnnotation(context, annotation, rect, scale);
-  if (preview && app.draft) paintAnnotation(context, app.draft, rect, scale);
+  for (const annotation of photo.annotations) paintAnnotation(context, annotation, rect, scale, photo, image.naturalWidth, image.naturalHeight);
+  if (preview && app.draft) paintAnnotation(context, app.draft, rect, scale, photo, image.naturalWidth, image.naturalHeight);
   return rect;
 }
 
@@ -328,8 +340,14 @@ function hitAnnotation(point) {
 function openAnnotation(annotation, existing=false) {
   app.draft = annotation;
   app.editingId = existing ? annotation.id : null;
-  $('annotationHeading').textContent = annotation.type === 'note' ? '현장 메모' : annotation.type === 'lshape' ? '가로·세로 실측값' : '치수선 입력';
-  $('dimensionField').classList.toggle('hidden', annotation.type !== 'dimension');
+  $('annotationHeading').textContent = annotation.type === 'note' ? '현장 메모' : annotation.type === 'lshape' ? '가로·세로 실측값' : annotation.mode==='reference' ? '기준 길이 설정' : annotation.mode==='estimated' ? '자동 계산 치수' : '치수선 입력';
+  $('dimensionField').classList.toggle('hidden', annotation.type !== 'dimension' || annotation.mode==='estimated');
+  $('estimateField').classList.toggle('hidden', annotation.mode !== 'estimated');
+  if (annotation.mode==='estimated') {
+    const result=resolvedDimension(annotation,currentPhoto(),app.image.naturalWidth,app.image.naturalHeight);
+    $('estimateValue').textContent=result ? `≈ ${result.value} ${result.unit}` : '기준 길이 없음';
+  }
+  $('annotationHint').textContent=annotation.mode==='reference' ? '사진에서 이 구간과 계산할 구간이 같은 평면이어야 합니다. 기준은 사진당 하나입니다.' : annotation.mode==='estimated' ? '계산값은 참고용입니다. 기준 길이를 수정하면 자동으로 다시 계산돼요.' : '치수선은 직접 입력한 실측값입니다.';
   $('lShapeFields').classList.toggle('hidden', annotation.type !== 'lshape');
   $('noteField').classList.toggle('hidden', annotation.type !== 'note');
   $('deleteAnnotation').classList.toggle('hidden', !existing);
@@ -341,7 +359,7 @@ function openAnnotation(annotation, existing=false) {
   $('noteValue').value = annotation.text || '';
   $('annotationColor').value = annotation.color || '#0a8589';
   openDialog('annotationDialog');
-  if (annotation.type === 'dimension') $('dimensionValue').focus();
+  if (annotation.type === 'dimension' && annotation.mode!=='estimated') $('dimensionValue').focus();
   else if (annotation.type === 'lshape') $('widthValue').focus();
   else $('noteValue').focus();
 }
@@ -368,7 +386,7 @@ function onPointerDown(event) {
   event.preventDefault();
   canvas.setPointerCapture(event.pointerId);
   app.pointer = { id:event.pointerId, start:point };
-  if (app.tool === 'dimension') app.draft = { id:uuid(), type:'dimension', a:norm, b:norm, value:'', unit:'cm', color:'#0a8589' };
+  if (['dimension','reference','auto'].includes(app.tool)) app.draft = { id:uuid(), type:'dimension', mode:app.tool==='reference'?'reference':app.tool==='auto'?'estimated':'manual', a:norm, b:norm, value:'', unit:photoReference(currentPhoto())?.unit||'cm', color:app.tool==='auto'?'#b66d13':'#0a8589' };
   if (app.tool === 'lshape') app.draft = { id:uuid(), type:'lshape', a:norm, b:norm, valueWidth:'', valueHeight:'', unit:'cm',color:'#0a8589' };
   if (app.tool === 'note') app.draft = { id:uuid(), type:'note', a:norm, text:'', color:'#0a8589' };
   draw();
@@ -395,6 +413,12 @@ function onPointerUp(event) {
     return;
   }
   const annotation = app.draft;
+  if(annotation.mode==='estimated') {
+    const value=resolvedDimension(annotation,currentPhoto(),app.image.naturalWidth,app.image.naturalHeight);
+    if(!value) {app.draft=null;toast('기준 길이를 확인해주세요.');draw();return;}
+    rememberUndo(); currentPhoto().annotations.push(annotation);app.draft=null;
+    scheduleSave();draw();toast(`추정 길이 ≈ ${value.value} ${value.unit} · 기준과 같은 평면에서만 유효`);return;
+  }
   openAnnotation(annotation, false);
 }
 
@@ -454,6 +478,26 @@ async function printReport() {
   const container = $('printReport');
   container.replaceChildren();
   try {
+    const author=$('reportAuthor').value.trim();
+    const summary=$('reportSummary').value.trim();
+    const project=app.project;
+    project.reportMeta={author,summary,cover:$('reportCover').checked};
+    scheduleSave();
+    if ($('reportCover').checked) {
+      const cover=document.createElement('article');cover.className='report-page report-cover';
+      const tag=document.createElement('div');tag.className='report-kicker';tag.textContent='FIELD MARK / FIELD REPORT';
+      const heading=document.createElement('h1');heading.textContent='현장 사진 기록 보고서';
+      const name=document.createElement('h2');name.textContent=project.title;
+      const details=document.createElement('div');details.className='report-cover-details';
+      for(const [label,value] of [['현장',project.location||'미기재'],['작성일',shortDate(now())],['작성자',author||'미기재'],['사진',`${project.photos.length}장`]]) {
+        const field=document.createElement('p');const key=document.createElement('strong');key.textContent=label;
+        const detail=document.createElement('span');detail.textContent=value;field.append(key,detail);details.append(field);
+      }
+      const sub=document.createElement('h3');sub.textContent='현장 요약 · 조치사항';
+      const description=document.createElement('p');description.className='report-summary';description.textContent=summary||'기재된 요약 없음';
+      const notice=document.createElement('p');notice.className='report-estimate-warning';notice.textContent='※ ≈ 표시는 기준물 비율로 계산한 추정값이며 실측값을 대체하지 않습니다.';
+      cover.append(tag,heading,name,details,sub,description,notice);container.append(cover);
+    }
     for (const [i,photo] of app.project.photos.entries()) {
       const image = await loadImage(photo.blob);
       const page = document.createElement('article');
@@ -463,7 +507,7 @@ async function printReport() {
       const heading = document.createElement('h1');
       heading.textContent = app.project.title;
       const location = document.createElement('p');
-      location.textContent = `${app.project.location || '위치 미기재'} · ${shortDate(app.project.createdAt)} · ${i+1}/${app.project.photos.length}`;
+      location.textContent = `${app.project.location || '위치 미기재'} · ${shortDate(now())} · 사진 ${i+1}/${app.project.photos.length}`;
       header.append(heading,location);
       const photoImg = document.createElement('img');
       photoImg.src = drawImageForReport(image,photo);
@@ -471,10 +515,12 @@ async function printReport() {
       const notes = photo.annotations.filter(a=>a.type==='note').map((a,index)=>`${index+1}. ${a.text}`).join('\n');
       const caption = document.createElement('p');
       caption.className = 'report-caption';
-      caption.textContent = `${photo.name}${notes ? `\n메모: ${notes}` : ''}`;
+      const manual=photo.annotations.filter(a=>a.type==='dimension'&&a.mode!=='estimated').length;
+      const estimated=photo.annotations.filter(a=>a.mode==='estimated').length;
+      caption.textContent = `${photo.name}  |  실측·기준 ${manual}건 / 추정 ${estimated}건${notes ? `\n현장 메모\n${notes}` : ''}`;
       const footer = document.createElement('p');
       footer.className = 'report-footer';
-      footer.textContent = 'FIELD MARK · 직접 입력한 치수이며 자동 측정값이 아닙니다.';
+      footer.textContent = 'FIELD MARK · ≈ 표시는 동일 평면 가정의 추정 길이입니다. 정밀 측정에는 실측값을 사용하세요.';
       page.append(header,photoImg,caption,footer);
       container.append(page);
     }
@@ -495,7 +541,7 @@ async function exportBackup() {
   await flushSave();
   const project = app.project;
   const photos = await Promise.all(project.photos.map(async p=>({ id:p.id,name:p.name,annotations:p.annotations,dataUrl:await fileAsDataUrl(p.blob) })));
-  const backup = { format:'fieldmark-backup',version:1,project:{ id:project.id,title:project.title,location:project.location,createdAt:project.createdAt,updatedAt:project.updatedAt,photos } };
+  const backup = { format:'fieldmark-backup',version:1,project:{ id:project.id,title:project.title,location:project.location,reportMeta:project.reportMeta,createdAt:project.createdAt,updatedAt:project.updatedAt,photos } };
   downloadBlob(new Blob([JSON.stringify(backup)],{type:'application/json'}),`${cleanFilename(project.title)}.fieldmark.json`);
   toast('백업 파일을 저장했어요.');
 }
@@ -512,7 +558,7 @@ async function importBackup(file) {
       const blob = await (await fetch(photo.dataUrl)).blob();
       photos.push({ id:uuid(),name:String(photo.name||'사진').slice(0,150),blob,annotations:Array.isArray(photo.annotations)?photo.annotations:[] });
     }
-    const project = { id:uuid(),title:String(data.project.title||'복원된 현장').slice(0,80),location:String(data.project.location||'').slice(0,150),createdAt:now(),updatedAt:now(),photos };
+    const project = { id:uuid(),title:String(data.project.title||'복원된 현장').slice(0,80),location:String(data.project.location||'').slice(0,150),reportMeta:data.project.reportMeta||{},createdAt:now(),updatedAt:now(),photos };
     app.projects.unshift(project);
     await saveProject(project);
     renderProjects();
@@ -557,7 +603,7 @@ function bindEvents() {
     event.preventDefault();
     const annotation=app.draft;
     if(!annotation)return;
-    if(annotation.type==='dimension'){
+    if(annotation.type==='dimension' && annotation.mode!=='estimated'){
       if(!validDimension($('dimensionValue').value)){toast('0보다 큰 치수를 입력해주세요.');return;}
       annotation.value=String(Number($('dimensionValue').value));
       annotation.unit=$('dimensionUnit').value;
@@ -568,12 +614,13 @@ function bindEvents() {
       annotation.valueWidth=String(Number($('widthValue').value));
       annotation.valueHeight=String(Number($('heightValue').value));
       annotation.unit=$('lShapeUnit').value;
-    }else{
+    }else if(annotation.type==='note'){
       if(!$('noteValue').value.trim()){toast('메모 내용을 입력해주세요.');return;}
       annotation.text=$('noteValue').value.trim();
     }
     annotation.color=$('annotationColor').value;
     rememberUndo();
+    if(annotation.mode==='reference') currentPhoto().annotations=currentPhoto().annotations.filter(a=>a.mode!=='reference'||a.id===app.editingId);
     if(app.editingId){
       const index=currentPhoto().annotations.findIndex(a=>a.id===app.editingId);
       if(index>=0) currentPhoto().annotations[index]=annotation;
@@ -598,7 +645,12 @@ function bindEvents() {
     scheduleSave();draw();
   });
   $('shareImage').addEventListener('click',()=>void exportImage());
-  $('exportReport').addEventListener('click',()=>openDialog('reportDialog'));
+  $('exportReport').addEventListener('click',()=>{
+    const meta=app.project?.reportMeta||{};
+    $('reportAuthor').value=meta.author||'';$('reportSummary').value=meta.summary||'';
+    $('reportCover').checked=meta.cover!==false;
+    openDialog('reportDialog');
+  });
   $('confirmReport').addEventListener('click',()=>void printReport());
   $('backupProject').addEventListener('click',()=>void exportBackup());
   $('backupImport').addEventListener('click',()=>$('backupInput').click());
