@@ -162,6 +162,7 @@ function renderThumbnails() {
 }
 
 async function selectPhoto(index) {
+  clearTimeout(app.notePress?.timer);app.notePress=null;
   app.photoIndex = index;
   app.undo = [];
   app.draft = null;
@@ -218,6 +219,7 @@ async function addPhotos(files) {
 }
 
 function setTool(tool) {
+  clearTimeout(app.notePress?.timer);app.notePress=null;
   if (tool === 'auto' && !currentPhoto()?.annotations.some(a=>a.mode==='reference')) {
     toast('먼저 ‘기준 길이’를 선택해 사진에서 길이를 아는 구간을 표시해주세요.');
     return;
@@ -226,7 +228,7 @@ function setTool(tool) {
   app.draft = null;
   for (const button of document.querySelectorAll('[data-tool]')) button.classList.toggle('is-active', button.dataset.tool === tool);
   canvas.style.cursor = tool === 'select' ? 'default' : 'crosshair';
-  $('modeHint').textContent = { select:'메모 1회: 펼침·숨김 / 2회: 수정', dimension:'실측한 구간을 드래그해 입력', reference:'길이를 아는 구간을 드래그해 기준 설정', auto:'같은 평면의 구간을 드래그하면 길이 추정', lshape:'대각선으로 드래그해 가로·세로 표시', note:'메모를 붙일 지점을 누르세요' }[tool];
+  $('modeHint').textContent = { select:'메모 탭: 펼침·숨김 / 길게: 수정', dimension:'실측한 구간을 드래그해 입력', reference:'길이를 아는 구간을 드래그해 기준 설정', auto:'같은 평면의 구간을 드래그하면 길이 추정', lshape:'대각선으로 드래그해 가로·세로 표시', note:'메모를 붙일 지점을 누르세요' }[tool];
   draw();
 }
 
@@ -401,10 +403,12 @@ function onPointerDown(event) {
   if (app.tool === 'select') {
     const annotation = hitAnnotation(point);
     if (annotation?.type === 'note') {
-      const repeated=app.lastNoteTap?.id===annotation.id && Date.now()-app.lastNoteTap.at<480;
-      app.lastNoteTap={id:annotation.id,at:Date.now()};
-      if (repeated) { openAnnotation({...annotation},true);app.lastNoteTap=null; }
-      else {rememberUndo();annotation.expanded=!annotation.expanded;scheduleSave();draw();}
+      app.notePress={id:annotation.id,pointerId:event.pointerId,start:point,long:false};
+      app.notePress.timer=setTimeout(()=>{
+        if (!app.notePress || app.notePress.id!==annotation.id) return;
+        app.notePress.long=true;
+        openAnnotation({...annotation},true);
+      },650);
     } else if (annotation) openAnnotation({ ...annotation }, true);
     return;
   }
@@ -418,6 +422,13 @@ function onPointerDown(event) {
 }
 
 function onPointerMove(event) {
+  if (app.notePress?.pointerId===event.pointerId) {
+    const point=pointerPosition(event);
+    if(Math.hypot(point.x-app.notePress.start.x,point.y-app.notePress.start.y)>12){
+      clearTimeout(app.notePress.timer);app.notePress=null;
+    }
+    return;
+  }
   if (!app.pointer || app.pointer.id !== event.pointerId || !app.draft || !app.imageRect) return;
   if (app.draft.type === 'dimension' || app.draft.type === 'lshape') {
     const point = pointerPosition(event);
@@ -427,6 +438,14 @@ function onPointerMove(event) {
 }
 
 function onPointerUp(event) {
+  if (app.notePress?.pointerId===event.pointerId) {
+    const press=app.notePress;clearTimeout(press.timer);app.notePress=null;
+    if (!press.long) {
+      const annotation=currentPhoto()?.annotations.find(a=>a.id===press.id);
+      if(annotation){rememberUndo();annotation.expanded=!annotation.expanded;scheduleSave();draw();}
+    }
+    return;
+  }
   if (!app.pointer || app.pointer.id !== event.pointerId || !app.draft) return;
   const start = app.pointer.start;
   const end = pointerPosition(event);
@@ -623,7 +642,7 @@ function bindEvents() {
   canvas.addEventListener('pointerdown',onPointerDown);
   canvas.addEventListener('pointermove',onPointerMove);
   canvas.addEventListener('pointerup',onPointerUp);
-  canvas.addEventListener('pointercancel',()=>{app.pointer=null;app.draft=null;draw();});
+  canvas.addEventListener('pointercancel',()=>{clearTimeout(app.notePress?.timer);app.notePress=null;app.pointer=null;app.draft=null;draw();});
   $('annotationForm').addEventListener('submit',event=>{
     event.preventDefault();
     const annotation=app.draft;
