@@ -520,6 +520,82 @@ function loadReportImage(photo) {
   });
 }
 
+function pdfText(context, text, x, y, maxWidth, lineHeight=34, maxLines=5) {
+  let line='';let count=0;
+  for (const character of String(text||'')) {
+    if (character==='\n' || context.measureText(line+character).width>maxWidth) {
+      if(line){context.fillText(line,x,y);y+=lineHeight;count++;}
+      line=character==='\n'?'':character;
+      if(count>=maxLines)return y;
+    } else line+=character;
+  }
+  if(line && count<maxLines){context.fillText(line,x,y);y+=lineHeight;}
+  return y;
+}
+
+function makeReportPage(project, image, photo, index, author) {
+  const sheet=document.createElement('canvas');sheet.width=1240;sheet.height=1754;
+  const c=sheet.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,1240,1754);
+  c.fillStyle='#155f69';c.fillRect(58,55,1124,7);
+  c.fillStyle='#193b43';c.font='bold 38px sans-serif';
+  pdfText(c,project.title,62,122,1100,45,1);
+  c.fillStyle='#59757a';c.font='23px sans-serif';
+  pdfText(c,`${project.location||'위치 미기재'} · ${shortDate(now())} · 사진 ${index+1}/${project.photos.length}`,62,168,1080,34,1);
+  // Keep the original photo and its annotations together in a single A4 page.
+  // Compose the annotated image offscreen to retain the photo's aspect ratio.
+  const illustration=document.createElement('canvas');illustration.width=1120;illustration.height=1360;
+  renderPhoto(illustration.getContext('2d'),image,photo,1120,1360);
+  c.fillStyle='#fff';c.fillRect(0,192,1240,1430);
+  c.drawImage(illustration,60,205,1120,1360);
+  c.fillStyle='#334e54';c.font='22px sans-serif';
+  const notes=photo.annotations.filter(a=>a.type==='note').map(a=>a.text).join(' / ');
+  pdfText(c,`${photo.name}${notes?` · 메모: ${notes}`:''}`,62,1610,1110,31,2);
+  c.fillStyle='#74858b';c.font='18px sans-serif';
+  c.fillText(`FIELD MARK · 작성자 ${author||'미기재'} · ≈ 표시는 기준물 기반 추정값입니다.`,62,1701);
+  return sheet;
+}
+
+function makeCoverPage(project, author, summary) {
+  const sheet=document.createElement('canvas');sheet.width=1240;sheet.height=1754;
+  const c=sheet.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,1240,1754);
+  c.fillStyle='#07878a';c.fillRect(75,110,1090,9);
+  c.font='bold 24px sans-serif';c.fillText('FIELD MARK / FIELD REPORT',80,180);
+  c.fillStyle='#183e45';c.font='bold 58px sans-serif';c.fillText('현장 사진 기록 보고서',80,375);
+  c.font='bold 43px sans-serif';pdfText(c,project.title,80,470,1080,58,2);
+  c.fillStyle='#48666d';c.font='29px sans-serif';
+  const fields=[`현장: ${project.location||'미기재'}`,`작성일: ${shortDate(now())}`,`작성자: ${author||'미기재'}`,`사진: ${project.photos.length}장`];
+  fields.forEach((line,i)=>c.fillText(line,80,630+i*64));
+  c.fillStyle='#1b545c';c.font='bold 34px sans-serif';c.fillText('현장 요약 · 조치사항',80,1000);
+  c.fillStyle='#344d53';c.font='28px sans-serif';
+  pdfText(c,summary||'기재된 요약 없음',80,1080,1070,47,10);
+  c.fillStyle='#8d6c46';c.font='20px sans-serif';
+  c.fillText('※ ≈ 표시는 기준물 비율로 계산한 추정값이며 실측값을 대체하지 않습니다.',80,1660);
+  return sheet;
+}
+
+async function saveReportPdf(project, reportImages, author, summary, cover) {
+  if (!window.PDFLib?.PDFDocument) throw new Error('PDF 생성 모듈을 불러오지 못했어요. 새로고침해 주세요.');
+  const pdf=await window.PDFLib.PDFDocument.create();
+  const sheets=[];
+  if(cover)sheets.push(makeCoverPage(project,author,summary));
+  reportImages.forEach(({image,photo},i)=>sheets.push(makeReportPage(project,image,photo,i,author)));
+  for(const sheet of sheets){
+    const image=await pdf.embedJpg(sheet.toDataURL('image/jpeg',.82));
+    const page=pdf.addPage([595.28,841.89]);
+    page.drawImage(image,{x:0,y:0,width:595.28,height:841.89});
+    sheet.width=1;sheet.height=1;
+  }
+  const bytes=await pdf.save();
+  const filename=`${cleanFilename(project.title)}_현장보고서.pdf`;
+  const file=new File([bytes],filename,{type:'application/pdf'});
+  if(navigator.canShare?.({files:[file]})){
+    try{await navigator.share({files:[file],title:'현장 사진 기록 보고서'});return;}
+    catch(error){if(error.name==='AbortError')return;}
+  }
+  downloadBlob(file,filename);
+  toast('PDF 보고서를 저장했어요. 다운로드 항목을 확인해 주세요.');
+}
+
 async function printReport() {
   closeDialog('reportDialog');
   if (!app.project?.photos.length) return;
@@ -547,8 +623,10 @@ async function printReport() {
       const notice=document.createElement('p');notice.className='report-estimate-warning';notice.textContent='※ ≈ 표시는 기준물 비율로 계산한 추정값이며 실측값을 대체하지 않습니다.';
       cover.append(tag,heading,name,details,sub,description,notice);container.append(cover);
     }
+    const reportImages=[];
     for (const [i,photo] of app.project.photos.entries()) {
       const image = await loadReportImage(photo);
+      reportImages.push({image,photo});
       const page = document.createElement('article');
       page.className = 'report-page';
       const header = document.createElement('header');
@@ -573,8 +651,7 @@ async function printReport() {
       page.append(header,photoImg,caption,footer);
       container.append(page);
     }
-    await new Promise(resolve => setTimeout(resolve, 120));
-    window.print();
+    await saveReportPdf(project,reportImages,author,summary,$('reportCover').checked);
   } catch (error) { toast(`보고서를 만들지 못했어요: ${error.message}`); }
 }
 
