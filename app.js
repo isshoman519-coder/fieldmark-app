@@ -573,8 +573,21 @@ function makeCoverPage(project, author, summary) {
   return sheet;
 }
 
+let pdfLibLoading;
+async function ensurePdfLib() {
+  if (window.PDFLib?.PDFDocument) return;
+  if (!pdfLibLoading) pdfLibLoading = new Promise((resolve,reject) => {
+    const script=document.createElement('script');
+    script.src=new URL('./vendor/pdf-lib.min.js?v=9',import.meta.url).href;
+    script.onload=()=>window.PDFLib?.PDFDocument?resolve():reject(new Error('PDF 모듈을 실행하지 못했어요.'));
+    script.onerror=()=>reject(new Error('PDF 모듈 다운로드에 실패했어요. 인터넷 연결을 확인해 주세요.'));
+    document.head.append(script);
+  });
+  try{await pdfLibLoading;}catch(error){pdfLibLoading=null;throw error;}
+}
+
 async function saveReportPdf(project, reportImages, author, summary, cover) {
-  if (!window.PDFLib?.PDFDocument) throw new Error('PDF 생성 모듈을 불러오지 못했어요. 새로고침해 주세요.');
+  await ensurePdfLib();
   const pdf=await window.PDFLib.PDFDocument.create();
   const sheets=[];
   if(cover)sheets.push(makeCoverPage(project,author,summary));
