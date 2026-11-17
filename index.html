@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#eff8f8">
+  <meta name="description" content="현장 사진에 치수와 메모를 기록하고 보고서로 공유하는 오프라인 도구">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <title>필드마크 — 사진 치수·현장 기록</title>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <section id="homeScreen" class="screen">
+      <header class="topbar">
+        <div class="brand"><span class="brand-icon">↗</span><span>필드마크 <small>FIELD MARK</small></span></div>
+        <span class="pill">MVP 체험판</span>
+      </header>
+
+      <main class="home-content">
+        <section class="hero">
+          <div class="eyebrow">PHOTO · MEASURE · REPORT</div>
+          <h1>현장 사진에<br><em>정보를 더하다.</em></h1>
+          <p>사진 한 장에 치수, 메모, 위치를 기록하고<br>필요한 순간 깔끔하게 공유하세요.</p>
+          <button id="newProjectHero" class="button button-primary button-large"><span>＋</span> 새 현장 기록 만들기</button>
+          <div class="hero-foot"><span>◉ 기기 안에만 저장</span><span>✓ 회원가입 불필요</span></div>
+        </section>
+
+        <section class="projects-section">
+          <div class="section-heading"><div><div class="eyebrow">MY WORKSPACE</div><h2>내 프로젝트</h2></div><div class="header-actions"><button id="backupImport" class="button button-quiet">백업 불러오기</button><button id="newProjectSmall" class="button button-quiet">＋ 새 프로젝트</button></div></div>
+          <div id="projectList" class="project-list"></div>
+          <div id="emptyProjects" class="empty-state"><div class="empty-symbol">▧</div><h3>첫 현장을 기록해 볼까요?</h3><p>실측값을 사진 위에 표시하고 보고서로 저장할 수 있어요.</p></div>
+        </section>
+        <footer class="home-footer">필드마크 MVP · 자동 거리 측정이 아닌 <strong>직접 측정한 값의 기록</strong>에 사용합니다.</footer>
+      </main>
+    </section>
+
+    <section id="editorScreen" class="screen hidden" aria-label="사진 편집기">
+      <header class="editor-topbar">
+        <button id="backHome" class="icon-button" aria-label="프로젝트 목록으로">←</button>
+        <div class="editor-title-wrap"><input id="projectTitle" class="title-input" aria-label="프로젝트 제목" maxlength="80"><span id="saveStatus">기기에 자동 저장</span></div>
+        <button id="exportReport" class="button button-primary button-small">보고서</button>
+      </header>
+
+      <main class="editor-content">
+        <div class="editor-info"><span id="photoPosition">사진 0장</span><span id="modeHint">도구를 선택해 기록하세요</span></div>
+        <div id="canvasStage" class="canvas-stage">
+          <canvas id="annotationCanvas" role="img" aria-label="사진과 치수선, 메모가 표시되는 편집 공간"></canvas>
+          <div id="emptyCanvas" class="empty-canvas"><div class="empty-symbol">▧</div><h3>사진을 추가하세요</h3><p>촬영하거나 갤러리에서 선택할 수 있어요.</p><button id="addFirstPhoto" class="button button-primary">＋ 사진 선택</button></div>
+        </div>
+        <div class="photo-strip"><div id="thumbnailList" class="thumbnail-list"></div><button id="addPhoto" class="thumbnail-add" title="사진 추가" aria-label="사진 추가">＋</button></div>
+        <div class="editor-bottom">
+          <div class="toolbar" role="group" aria-label="편집 도구">
+            <button class="tool is-active" data-tool="select"><span>⌖</span><small>선택</small></button>
+            <button class="tool" data-tool="dimension"><span>↔</span><small>치수선</small></button>
+            <button class="tool" data-tool="lshape"><span>↳</span><small>가로·세로</small></button>
+            <button class="tool" data-tool="note"><span>✎</span><small>메모</small></button>
+            <button id="undoAction" class="tool"><span>↶</span><small>되돌리기</small></button>
+          </div>
+          <div class="editor-actions"><button id="shareImage" class="button button-secondary">이미지 공유</button><button id="backupProject" class="button button-quiet">백업 저장</button><button id="removePhoto" class="button button-quiet">사진 삭제</button></div>
+        </div>
+      </main>
+    </section>
+  </div>
+
+  <dialog id="newProjectDialog" class="modal">
+    <form id="newProjectForm" method="dialog" class="modal-content"><div class="eyebrow">NEW PROJECT</div><h2>새 현장 기록</h2><label>프로젝트 이름<input id="newTitle" required maxlength="80" placeholder="예: 302호 주방 실측"></label><label>현장 위치 / 설명 <span class="optional">선택</span><input id="newLocation" maxlength="150" placeholder="예: 서울 ○○구, 주방"></label><div class="modal-actions"><button type="button" class="button button-secondary" data-close="newProjectDialog">취소</button><button type="submit" class="button button-primary">프로젝트 만들기</button></div></form>
+  </dialog>
+
+  <dialog id="annotationDialog" class="modal">
+    <form id="annotationForm" method="dialog" class="modal-content"><div class="eyebrow">ANNOTATION</div><h2 id="annotationHeading">치수 입력</h2><label id="dimensionField">실측 길이<div class="inline-fields"><input id="dimensionValue" inputmode="decimal" type="number" min="0" step="any" placeholder="직접 측정한 길이"><select id="dimensionUnit" aria-label="단위"><option>mm</option><option selected>cm</option><option>m</option></select></div></label><div id="lShapeFields" class="dual-measure hidden"><label>가로 실측 길이<input id="widthValue" inputmode="decimal" type="number" min="0" step="any" placeholder="가로"></label><label>세로 실측 길이<input id="heightValue" inputmode="decimal" type="number" min="0" step="any" placeholder="세로"></label><label>단위<select id="lShapeUnit"><option>mm</option><option selected>cm</option><option>m</option></select></label></div><label id="noteField" class="hidden">현장 메모<textarea id="noteValue" rows="3" maxlength="200" placeholder="확인할 내용이나 특징을 적으세요"></textarea></label><label>표시 색상<select id="annotationColor"><option value="#0a8589">청록</option><option value="#e24f57">빨강</option><option value="#eea52f">노랑</option><option value="#315ac7">파랑</option><option value="#253044">검정</option></select></label><p class="hint">치수는 자동 측정값이 아닌 직접 입력한 값입니다.</p><div class="modal-actions"><button id="deleteAnnotation" type="button" class="button button-danger hidden">삭제</button><button type="button" class="button button-secondary" data-close="annotationDialog">취소</button><button type="submit" class="button button-primary">저장</button></div></form>
+  </dialog>
+
+  <dialog id="reportDialog" class="modal"><div class="modal-content"><div class="eyebrow">REPORT</div><h2>현장 기록 내보내기</h2><p>사진에 표시된 치수·메모가 포함된 보고서를 인쇄하거나 PDF로 저장할 수 있어요.</p><p class="hint">기기에서 인쇄 메뉴를 열고 'PDF로 저장'을 선택하세요.</p><div class="modal-actions"><button type="button" class="button button-secondary" data-close="reportDialog">취소</button><button id="confirmReport" type="button" class="button button-primary">보고서 만들기</button></div></div></dialog>
+
+  <input id="photoInput" class="sr-only" type="file" accept="image/*" multiple>
+  <input id="backupInput" class="sr-only" type="file" accept="application/json,.json">
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <section id="printReport" aria-label="인쇄용 보고서"></section>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
