@@ -505,13 +505,18 @@ function drawImageForReport(image,photo) {
   return canvas.toDataURL('image/jpeg', .83);
 }
 
-function loadImage(blob) {
+function loadReportImage(photo) {
   return new Promise((resolve,reject) => {
     const image = new Image();
-    const url = URL.createObjectURL(blob);
-    image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
-    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('사진 읽기 실패')); };
-    image.src = url;
+    // Reuse the already working preview URL. Revoking a Blob URL inside
+    // onload can discard its decoded image on mobile Safari before drawImage.
+    image.onload = () => resolve(image);
+    image.onerror = () => {
+      if (currentPhoto()?.id === photo.id && app.image?.complete && app.image.naturalWidth) {
+        resolve(app.image);
+      } else reject(new Error('사진 읽기 실패'));
+    };
+    image.src = getObjectUrl(photo);
   });
 }
 
@@ -543,7 +548,7 @@ async function printReport() {
       cover.append(tag,heading,name,details,sub,description,notice);container.append(cover);
     }
     for (const [i,photo] of app.project.photos.entries()) {
-      const image = await loadImage(photo.blob);
+      const image = await loadReportImage(photo);
       const page = document.createElement('article');
       page.className = 'report-page';
       const header = document.createElement('header');

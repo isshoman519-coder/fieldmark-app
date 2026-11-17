@@ -40,3 +40,22 @@
 .header-actions{display:flex;align-items:center;gap:3px}.project-card{position:relative}.project-open{border:0;background:none;padding:0;display:flex;flex:1;flex-direction:column;text-align:left;color:inherit}.project-open .project-cover,.project-open .project-meta{width:100%}.project-delete{position:absolute;top:8px;right:8px;border:0;background:#ffffffd9;color:#a33a43;width:27px;height:27px;border-radius:50%;font-size:20px;line-height:1}
 .dual-measure{display:grid;grid-template-columns:1fr 1fr 85px;gap:8px}.dual-measure label{min-width:0}.dual-measure input,.dual-measure select{min-width:0}
 @media(max-width:640px){.header-actions{gap:0}.header-actions .button{padding:8px 6px;font-size:10px}.editor-actions{gap:0}.editor-actions .button{padding:8px 6px}}
+
+/* The canvas bitmap has a large intrinsic width on Retina iPhones. A grid
+   child contributes that width to the grid's minimum, causing the entire
+   editor to become wider than the viewport even when its CSS width is 100%. */
+#editorScreen{width:100%;max-width:100vw;min-width:0}
+#editorScreen .editor-topbar{width:100%;min-width:0}
+#editorScreen .editor-topbar>.icon-button{flex:0 0 42px}
+#editorScreen .editor-topbar>#exportReport{flex:0 0 auto}
+#editorScreen .editor-content{min-width:0;max-width:100%;box-sizing:border-box}
+#editorScreen .canvas-stage{display:block;width:100%;min-width:0;max-width:100%;isolation:isolate}
+#editorScreen #annotationCanvas{position:absolute;inset:0;width:100%;height:100%;min-width:0;max-width:100%}
+#editorScreen .photo-strip,#editorScreen .editor-bottom,#editorScreen .toolbar{min-width:0;max-width:100%}
+@media screen and (max-width:640px){
+  #editorScreen .editor-content{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+  #editorScreen .canvas-stage{flex:1 0 auto;height:clamp(240px,43dvh,450px);max-height:43dvh;min-height:240px}
+  #editorScreen .editor-bottom{width:100%}
+  #editorScreen .toolbar{grid-template-columns:repeat(4,minmax(0,1fr))}
+  #editorScreen .tool{min-width:0}
+}
